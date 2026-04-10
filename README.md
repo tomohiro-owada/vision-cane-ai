@@ -60,9 +60,85 @@ VisionCaneAI/
 ```
 
 本リポジトリには Xcode プロジェクトファイル（`.xcodeproj`）は含まれていません。
-Xcode で新規 App プロジェクトを作成し、`VisionCaneAI/` 以下のソースツリーを
-ドラッグ & ドロップしてください。`Info.plist` のキー（カメラ・マイク・
-音声認識の使用目的）は `Resources/Info.plist` にまとまっています。
+`project.yml` から [XcodeGen](https://github.com/yonaskolb/XcodeGen) で
+生成する運用です（CI でも同じ手順）。ローカルで開く場合は:
+
+```bash
+brew install xcodegen
+xcodegen generate
+open VisionCaneAI.xcodeproj
+```
+
+`Info.plist` のキー（カメラ・マイク・音声認識の使用目的）は
+`Resources/Info.plist` にまとまっています。
+
+## クラウドから iPhone まで届ける（Mac 不要 CI/CD）
+
+GitHub Actions の `macos-14` ランナーで XcodeGen + Fastlane match + TestFlight
+を回し、ローカル Mac を一切持たずに iPhone まで配信できます。
+
+### 1 回だけ必要な準備
+
+1. **Apple Developer Program に加入**し、Team ID を控える。
+2. [Apple Developer Portal](https://developer.apple.com/account/resources/identifiers/list)
+   で App ID `ai.visioncane.app` を登録（Capability: ARKit を有効化）。
+3. [App Store Connect](https://appstoreconnect.apple.com/) でアプリレコード
+   を作成し、同じ Bundle ID を指定。
+4. App Store Connect → Users and Access → Keys から **API Key (.p8)** を発行。
+   `Key ID` / `Issuer ID` / `.p8 の内容` を控える。
+5. 証明書と Provisioning Profile を暗号化保管するための **別プライベート
+   リポジトリ**（例: `vision-cane-ai-match`）を作る。空で良い。
+6. 上記 match リポジトリへの読み書きができる **GitHub Fine-grained PAT**
+   を発行する。
+
+### GitHub Secrets に登録する値
+
+| Secret 名 | 内容 |
+| --- | --- |
+| `APPLE_TEAM_ID` | 10 桁の Team ID |
+| `APP_STORE_CONNECT_API_KEY_ID` | App Store Connect API Key ID |
+| `APP_STORE_CONNECT_ISSUER_ID` | API Key の Issuer ID (UUID) |
+| `APP_STORE_CONNECT_API_KEY_CONTENT` | `.p8` の中身を **Base64 エンコード**した文字列 |
+| `MATCH_PASSWORD` | match が証明書を暗号化する任意のパスフレーズ |
+| `MATCH_GIT_URL` | `https://github.com/<you>/vision-cane-ai-match.git` |
+| `MATCH_GIT_BASIC_AUTHORIZATION` | `base64("<user>:<pat>")`（match リポジトリ用 PAT） |
+
+### 初回だけ走らせる bootstrap
+
+証明書と Provisioning Profile を match リポジトリに入れるのは 1 度きりの
+作業です。Actions タブから `iOS Release (TestFlight)` ワークフローを
+`workflow_dispatch` で実行し、`lane` に `bootstrap_signing` を指定して
+キックしてください。これで match リポジトリに `certs/` と `profiles/`
+が暗号化されて push されます。
+
+### 通常リリース
+
+`main` への push、もしくは `v*` タグの push で `beta` lane が走り、
+以下の順でパイプラインが回ります。
+
+1. `xcodegen generate` で `.xcodeproj` を生成
+2. `fastlane match appstore --readonly` で証明書を復号してキーチェーンに登録
+3. `latest_testflight_build_number + 1` でビルド番号を採番
+4. `xcodebuild archive` → `-exportArchive` で `.ipa` を生成
+5. `upload_to_testflight` で App Store Connect にアップロード
+6. 処理完了後、iPhone の **TestFlight アプリ**で受け取ってインストール
+
+### iPhone 側の受け取り方
+
+- App Store から **TestFlight** アプリをインストール
+- App Store Connect → TestFlight → Internal Testing にあなたの Apple ID を追加
+- TestFlight アプリを開くと Vision Cane AI が表示されるので **インストール**
+
+### モデル重みはどうするか
+
+Gemma 4 INT4（数 GB）や YOLOv10 の重みは IPA に同梱するとビルドと配信が
+重くなるので、**初回起動時にアプリが自分でダウンロードする**前提にして
+います。具体的には `Documents/models/gemma-4-e4b-int4/` と
+`Documents/models/yolov10.mlpackage` に配置されればロードされ、それまでは
+`SceneNarrator` がテンプレート応答にフォールバックします。配信元は
+S3 / Cloudflare R2 / GitHub Releases のどれでも構いません。ダウンロード
+処理自体はまだ実装していないので、本番投入時に `ModelDownloader` のような
+サービスを追加してください。
 
 ## 動作モード
 

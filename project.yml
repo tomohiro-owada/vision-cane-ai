@@ -1,0 +1,59 @@
+name: VisionCaneAI
+
+options:
+  bundleIdPrefix: ai.visioncane
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    TARGETED_DEVICE_FAMILY: "1" # iPhone only
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CODE_SIGN_STYLE: Manual
+
+targets:
+  VisionCaneAI:
+    type: application
+    platform: iOS
+    supportedDestinations: [iOS]
+    sources:
+      - path: VisionCaneAI
+        excludes:
+          - "Resources/Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.visioncane.app
+        PRODUCT_NAME: VisionCaneAI
+        INFOPLIST_FILE: VisionCaneAI/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ENABLE_PREVIEWS: YES
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # fastlane match + build_app が provisioning profile / signing identity を
+        # 上書きするので、ここではチーム ID だけ環境変数から注入する。
+        DEVELOPMENT_TEAM: $(APPLE_TEAM_ID)
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "match AppStore ai.visioncane.app"
+
+schemes:
+  VisionCaneAI:
+    build:
+      targets:
+        VisionCaneAI: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    test:
+      config: Debug

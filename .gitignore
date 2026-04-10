@@ -6,11 +6,28 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
+# XcodeGen で自動生成される Xcode プロジェクト（CI 上でも生成されるので
+# リポジトリには入れない）
+VisionCaneAI.xcodeproj/
+
 # Swift Package Manager
 .build/
 .swiftpm/
 Packages/
 Package.resolved
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+fastlane/README.md
+*.ipa
+*.dSYM.zip
+
+# Ruby / bundler
+vendor/bundle/
+.bundle/
 
 # Models / large binaries (quantized weights should live outside git)
 *.safetensors

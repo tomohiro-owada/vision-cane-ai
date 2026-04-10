@@ -1,0 +1,103 @@
+default_platform(:ios)
+
+APP_IDENTIFIER = "ai.visioncane.app"
+SCHEME         = "VisionCaneAI"
+XCODEPROJ      = "VisionCaneAI.xcodeproj"
+
+platform :ios do
+
+  before_all do
+    # GitHub Actions 上でキーチェーンを初期化し、非対話的にパスワードを
+    # 取り扱えるようにする。ローカル実行時は no-op。
+    setup_ci if ENV["CI"]
+  end
+
+  desc "App Store Connect API キーで認証"
+  private_lane :authenticate do
+    app_store_connect_api_key(
+      key_id:      ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id:   ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
+      is_key_content_base64: true,
+      in_house:    false
+    )
+  end
+
+  desc "証明書と Provisioning Profile を読み込み (read-only)"
+  private_lane :sync_signing do
+    match(
+      type:           "appstore",
+      app_identifier: [APP_IDENTIFIER],
+      readonly:       true,
+      git_basic_authorization: ENV["MATCH_GIT_BASIC_AUTHORIZATION"]
+    )
+  end
+
+  desc "Xcode プロジェクトを XcodeGen で生成"
+  private_lane :generate_project do
+    sh("cd .. && xcodegen generate")
+  end
+
+  desc "TestFlight にビルドをアップロード"
+  lane :beta do
+    generate_project
+    key = authenticate
+    sync_signing
+
+    # TestFlight の最新ビルド番号 +1 を採番してユニーク化する。
+    latest = latest_testflight_build_number(
+      app_identifier: APP_IDENTIFIER,
+      api_key: key,
+      initial_build_number: 0
+    )
+    increment_build_number(
+      build_number: latest + 1,
+      xcodeproj: XCODEPROJ
+    )
+
+    build_app(
+      scheme: SCHEME,
+      project: XCODEPROJ,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          APP_IDENTIFIER => "match AppStore #{APP_IDENTIFIER}"
+        }
+      },
+      xcargs: "APPLE_TEAM_ID=#{ENV['APPLE_TEAM_ID']} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}"
+    )
+
+    upload_to_testflight(
+      api_key: key,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      skip_submission: true
+    )
+  end
+
+  desc "初回のみ: match で証明書と Provisioning Profile を生成する"
+  lane :bootstrap_signing do
+    authenticate
+    match(
+      type:           "appstore",
+      app_identifier: [APP_IDENTIFIER],
+      readonly:       false,
+      force_for_new_devices: true,
+      git_basic_authorization: ENV["MATCH_GIT_BASIC_AUTHORIZATION"]
+    )
+  end
+
+  desc "ローカルビルド（アーカイブなし、コンパイルだけ通す）"
+  lane :compile do
+    generate_project
+    build_app(
+      scheme: SCHEME,
+      project: XCODEPROJ,
+      configuration: "Debug",
+      skip_archive: true,
+      skip_codesigning: true,
+      destination: "generic/platform=iOS Simulator"
+    )
+  end
+end

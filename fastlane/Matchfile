@@ -1,0 +1,9 @@
+# 証明書と Provisioning Profile を暗号化して別リポジトリに保管する設定。
+# - git_url: 証明書を格納する *別の* プライベートリポジトリ（例: vision-cane-ai-match）
+# - storage_mode: "git" 以外に "s3" / "google_cloud" も使えるが、GitHub で一貫させる。
+git_url(ENV["MATCH_GIT_URL"]) if ENV["MATCH_GIT_URL"]
+storage_mode("git")
+
+type("appstore") # 本番配布 = appstore 証明書を使用
+app_identifier(["ai.visioncane.app"])
+username(ENV["APPLE_ID"]) if ENV["APPLE_ID"]

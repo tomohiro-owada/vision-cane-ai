@@ -1,0 +1,80 @@
+name: iOS Release (TestFlight)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "fastlane lane to run"
+        required: true
+        default: "beta"
+        type: choice
+        options:
+          - beta
+          - compile
+          - bootstrap_signing
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Archive & Upload to TestFlight
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+      LC_ALL: "en_US.UTF-8"
+      LANG: "en_US.UTF-8"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.0'
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          xcodegen --version
+          bundle exec fastlane --version
+
+      - name: Run fastlane lane
+        run: |
+          LANE="${{ github.event.inputs.lane || 'beta' }}"
+          bundle exec fastlane "$LANE"
+
+      - name: Upload build artifacts
+        if: success() && (github.event.inputs.lane == 'beta' || github.event_name != 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
+        with:
+          name: VisionCaneAI-ipa
+          path: |
+            *.ipa
+            *.dSYM.zip
+          if-no-files-found: ignore
+          retention-days: 14
